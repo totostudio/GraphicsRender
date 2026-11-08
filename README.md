@@ -1,12 +1,12 @@
-# GraphicsRender — Real-Time 3D Graphics Pipeline Source Code
+# GraphicsRender — Real-Time 3D Graphics Pipeline Shader Reference
 
 > **Author**: [@GraphicsRender](https://www.youtube.com/@GraphicsRender)
 
-Production reference source code, standalone WebGL2 interactive shaders, and GLSL algorithms for the **Real-Time 3D Graphics Pipeline** series.
+Production reference GLSL shaders and algorithmic implementations for the **Real-Time 3D Graphics Pipeline** masterclass series on YouTube.
 
 ---
 
-## 📁 Pipeline Modules & Reference Implementations
+## 📁 Pipeline Modules & Reference Shaders
 
 | Module | Source Code | Pipeline Technique | Walkthrough |
 | :---: | :--- | :--- | :---: |
@@ -20,11 +20,10 @@ Production reference source code, standalone WebGL2 interactive shaders, and GLS
 
 ---
 
-## 🚀 Quick Start
-Every module directory contains a standalone `index.html` and modular GLSL files in `shaders/`:
-1. **Zero Dependencies**: Pure native WebGL2 implementation. No `npm install`, no build tools, no bundlers.
-2. **Instant Run**: Double-click `index.html` in any modern web browser.
-3. **Diagnostic Controls**: Press keys `1` ~ `5` to switch between different rendering passes, G-Buffers, heatmaps, and debug views.
+## 🚀 Usage & Integration
+This repository contains clean, modular, and self-contained GLSL fragment and compute shader routines:
+1. **Engine Agnostic**: Written in clean, modern GLSL (ES 3.00 / 330 core), easily portable to HLSL, WGSL, Unreal Engine Custom Nodes, or Unity Custom Passes.
+2. **First-Principles Architecture**: Every pass strictly reflects the mathematical derivations and physical optics deconstructed in each corresponding YouTube lecture.
 
 ---
 
