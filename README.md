@@ -1,6 +1,6 @@
 # GraphicsRender — Real-Time 3D Graphics Pipeline Source Code
 
-> **Author**: [@GraphicsRender](https://www.youtube.com/@GraphicsRender) 
+> **Author**: [@GraphicsRender](https://www.youtube.com/@GraphicsRender)
 
 Production reference source code, standalone WebGL2 interactive shaders, and GLSL algorithms for the **Real-Time 3D Graphics Pipeline** series.
 
