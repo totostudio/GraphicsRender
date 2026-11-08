@@ -1,224 +1,242 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-<!--
+  <!--
   Author: @GraphicsRender (https://github.com/totostudio/GraphicsRender)
-  Series: Real-Time 3D Graphics Pipeline Studio
+  Series: Real-Time 3D Graphics Pipeline Studio 
   YouTube: https://www.youtube.com/@GraphicsRender
 -->
-<meta charset="UTF-8">
-<meta name="viewport" content="width=1920, height=1080">
-<title>SVGF Real-Time Viewport — Spatio-Temporal Variance-Guided Filtering &amp; Ray Tracing Denoising</title>
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    width: 1920px;
-    height: 1080px;
-    background: #020408;
-    color: #F8FAFC;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
-    overflow: hidden;
-    position: relative;
-    user-select: none;
-  }
-  canvas#glCanvas {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    display: block;
-    z-index: 1;
-  }
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1920, height=1080">
+  <title>SVGF Real-Time Viewport — Spatio-Temporal Variance-Guided Filtering &amp; Ray Tracing Denoising</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
 
-  /* Minimal Engine Viewport Top Bar (Industrial Viewport HUD) */
-  .viewport-top-bar {
-    position: absolute;
-    top: 28px;
-    left: 40px;
-    right: 40px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    z-index: 10;
-    pointer-events: none;
-    font-family: "JetBrains Mono", Consolas, monospace;
-  }
-  .viewport-identity {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    font-size: 13px;
-    color: #94A3B8;
-  }
-  .viewport-tag {
-    background: rgba(37, 99, 235, 0.18);
-    border: 1px solid rgba(59, 130, 246, 0.45);
-    color: #38BDF8;
-    padding: 3px 10px;
-    border-radius: 4px;
-    font-weight: 700;
-    letter-spacing: 1px;
-    font-size: 11px;
-  }
-  .viewport-title {
-    color: #FFFFFF;
-    font-weight: 600;
-    font-size: 14px;
-    letter-spacing: 0.5px;
-  }
-  .mode-selector {
-    display: flex;
-    gap: 8px;
-    pointer-events: auto;
-  }
-  .mode-pill {
-    font-size: 12px;
-    font-weight: 600;
-    background: rgba(15, 23, 42, 0.85);
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    padding: 5px 12px;
-    border-radius: 4px;
-    color: #94A3B8;
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-  .mode-pill:hover {
-    border-color: #38BDF8;
-    color: #FFFFFF;
-  }
-  .mode-pill.active {
-    background: rgba(37, 99, 235, 0.35);
-    border-color: #38BDF8;
-    color: #FFFFFF;
-  }
+    body {
+      width: 1920px;
+      height: 1080px;
+      background: #020408;
+      color: #F8FAFC;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+      overflow: hidden;
+      position: relative;
+      user-select: none;
+    }
 
-  /* Bottom Telemetry HUD — YouTube Safe-Zone Compliant (Left side only) */
-  .hud-bottom-stats {
-    position: absolute;
-    bottom: 28px;
-    left: 40px;
-    display: flex;
-    gap: 16px;
-    z-index: 10;
-    font-family: "JetBrains Mono", Consolas, monospace;
-    font-size: 12px;
-    pointer-events: none;
-  }
-  .stat-card {
-    background: rgba(10, 14, 26, 0.88);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    backdrop-filter: blur(8px);
-    padding: 8px 14px;
-    border-radius: 6px;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-  .stat-label {
-    color: #64748B;
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-  }
-  .stat-val {
-    color: #38BDF8;
-    font-weight: 700;
-  }
-</style>
+    canvas#glCanvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      z-index: 1;
+    }
+
+    /* Minimal Engine Viewport Top Bar (Industrial Viewport HUD) */
+    .viewport-top-bar {
+      position: absolute;
+      top: 28px;
+      left: 40px;
+      right: 40px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 10;
+      pointer-events: none;
+      font-family: "JetBrains Mono", Consolas, monospace;
+    }
+
+    .viewport-identity {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 13px;
+      color: #94A3B8;
+    }
+
+    .viewport-tag {
+      background: rgba(37, 99, 235, 0.18);
+      border: 1px solid rgba(59, 130, 246, 0.45);
+      color: #38BDF8;
+      padding: 3px 10px;
+      border-radius: 4px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      font-size: 11px;
+    }
+
+    .viewport-title {
+      color: #FFFFFF;
+      font-weight: 600;
+      font-size: 14px;
+      letter-spacing: 0.5px;
+    }
+
+    .mode-selector {
+      display: flex;
+      gap: 8px;
+      pointer-events: auto;
+    }
+
+    .mode-pill {
+      font-size: 12px;
+      font-weight: 600;
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      padding: 5px 12px;
+      border-radius: 4px;
+      color: #94A3B8;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .mode-pill:hover {
+      border-color: #38BDF8;
+      color: #FFFFFF;
+    }
+
+    .mode-pill.active {
+      background: rgba(37, 99, 235, 0.35);
+      border-color: #38BDF8;
+      color: #FFFFFF;
+    }
+
+    /* Bottom Telemetry HUD — YouTube Safe-Zone Compliant (Left side only) */
+    .hud-bottom-stats {
+      position: absolute;
+      bottom: 28px;
+      left: 40px;
+      display: flex;
+      gap: 16px;
+      z-index: 10;
+      font-family: "JetBrains Mono", Consolas, monospace;
+      font-size: 12px;
+      pointer-events: none;
+    }
+
+    .stat-card {
+      background: rgba(10, 14, 26, 0.88);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(8px);
+      padding: 8px 14px;
+      border-radius: 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .stat-label {
+      color: #64748B;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .stat-val {
+      color: #38BDF8;
+      font-weight: 700;
+    }
+  </style>
 </head>
+
 <body>
 
-<canvas id="glCanvas"></canvas>
+  <canvas id="glCanvas"></canvas>
 
-<!-- Top HUD Bar -->
-<header class="viewport-top-bar">
-  <div class="viewport-identity">
-    <span class="viewport-tag">GLSL 3.0 ES</span>
-    <span class="viewport-title">REAL-TIME RAY TRACING DENOISING // SVGF FILTER</span>
-  </div>
-  <div class="mode-selector">
-    <button class="mode-pill active" data-mode="1">[1] Denoised Clean Signal</button>
-    <button class="mode-pill" data-mode="2">[2] Raw 1spp Noisy Input</button>
-    <button class="mode-pill" data-mode="3">[3] Temporal Variance Heatmap</button>
-    <button class="mode-pill" data-mode="4">[4] À-Trous Wavelet Step 1</button>
-    <button class="mode-pill" data-mode="5">[5] Edge-Stopping Guides</button>
-  </div>
-</header>
+  <!-- Top HUD Bar -->
+  <header class="viewport-top-bar">
+    <div class="viewport-identity">
+      <span class="viewport-tag">GLSL 3.0 ES</span>
+      <span class="viewport-title">REAL-TIME RAY TRACING DENOISING // SVGF FILTER</span>
+    </div>
+    <div class="mode-selector">
+      <button class="mode-pill active" data-mode="1">[1] Denoised Clean Signal</button>
+      <button class="mode-pill" data-mode="2">[2] Raw 1spp Noisy Input</button>
+      <button class="mode-pill" data-mode="3">[3] Temporal Variance Heatmap</button>
+      <button class="mode-pill" data-mode="4">[4] À-Trous Wavelet Step 1</button>
+      <button class="mode-pill" data-mode="5">[5] Edge-Stopping Guides</button>
+    </div>
+  </header>
 
-<!-- Bottom Telemetry Badges -->
-<footer class="hud-bottom-stats">
-  <div class="stat-card">
-    <span class="stat-label">RENDER PASS</span>
-    <span class="stat-val" id="statPass">Denoised Clean Master (SVGF)</span>
-  </div>
-  <div class="stat-card">
-    <span class="stat-label">RAY TRACING</span>
-    <span class="stat-val" id="statRays">1 spp Monte Carlo</span>
-  </div>
-  <div class="stat-card">
-    <span class="stat-label">SPATIAL FILTER</span>
-    <span class="stat-val" id="statFilter">5-Pass À-Trous Wavelet</span>
-  </div>
-  <div class="stat-card">
-    <span class="stat-label">VARIANCE GUIDANCE</span>
-    <span class="stat-val" id="statVar">Dynamic σ² Adaptation</span>
-  </div>
-</footer>
+  <!-- Bottom Telemetry Badges -->
+  <footer class="hud-bottom-stats">
+    <div class="stat-card">
+      <span class="stat-label">RENDER PASS</span>
+      <span class="stat-val" id="statPass">Denoised Clean Master (SVGF)</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-label">RAY TRACING</span>
+      <span class="stat-val" id="statRays">1 spp Monte Carlo</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-label">SPATIAL FILTER</span>
+      <span class="stat-val" id="statFilter">5-Pass À-Trous Wavelet</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-label">VARIANCE GUIDANCE</span>
+      <span class="stat-val" id="statVar">Dynamic σ² Adaptation</span>
+    </div>
+  </footer>
 
-<script>
-const canvas = document.getElementById('glCanvas');
-const gl = canvas.getContext('webgl2', { antialias: false, depth: false, powerPreference: 'high-performance' });
+  <script>
+    const canvas = document.getElementById('glCanvas');
+    const gl = canvas.getContext('webgl2', { antialias: false, depth: false, powerPreference: 'high-performance' });
 
-if (!gl) {
-  alert('WebGL2 not supported');
-}
+    if (!gl) {
+      alert('WebGL2 not supported');
+    }
 
-// Full HD Canvas Size
-canvas.width = 1920;
-canvas.height = 1080;
-gl.viewport(0, 0, 1920, 1080);
+    // Full HD Canvas Size
+    canvas.width = 1920;
+    canvas.height = 1080;
+    gl.viewport(0, 0, 1920, 1080);
 
-const urlParams = new URLSearchParams(window.location.search);
-let currentMode = parseInt(urlParams.get('mode') || '1');
-let timeOffset = parseFloat(urlParams.get('time') || '0.0');
+    const urlParams = new URLSearchParams(window.location.search);
+    let currentMode = parseInt(urlParams.get('mode') || '1');
+    let timeOffset = parseFloat(urlParams.get('time') || '0.0');
 
-window.setTimeOffset = (t) => {
-  timeOffset = t;
-};
+    window.setTimeOffset = (t) => {
+      timeOffset = t;
+    };
 
-// Mode HUD Descriptions
-const MODE_TITLES = {
-  1: { pass: "Denoised Clean Master (SVGF)", filter: "5-Pass À-Trous Wavelet", var: "Converged σ² ≈ 0" },
-  2: { pass: "Raw 1 spp Stochastic Input", filter: "Bypassed (0 Passes)", var: "High Unfiltered Noise" },
-  3: { pass: "Temporal Variance Heatmap", filter: "Statistical Derivation", var: "Local Var(L) = E[L²] - E[L]²" },
-  4: { pass: "À-Trous Wavelet Step 1 (Fine)", filter: "1-Pass Stride = 1", var: "Single-Tap Firefly Removal" },
-  5: { pass: "Edge-Stopping G-Buffer Guides", filter: "Normal & Depth Geometry", var: "Discontinuity Detection" }
-};
+    // Mode HUD Descriptions
+    const MODE_TITLES = {
+      1: { pass: "Denoised Clean Master (SVGF)", filter: "5-Pass À-Trous Wavelet", var: "Converged σ² ≈ 0" },
+      2: { pass: "Raw 1 spp Stochastic Input", filter: "Bypassed (0 Passes)", var: "High Unfiltered Noise" },
+      3: { pass: "Temporal Variance Heatmap", filter: "Statistical Derivation", var: "Local Var(L) = E[L²] - E[L]²" },
+      4: { pass: "À-Trous Wavelet Step 1 (Fine)", filter: "1-Pass Stride = 1", var: "Single-Tap Firefly Removal" },
+      5: { pass: "Edge-Stopping G-Buffer Guides", filter: "Normal & Depth Geometry", var: "Discontinuity Detection" }
+    };
 
-function updateModeUI(mode) {
-  currentMode = mode;
-  document.querySelectorAll('.mode-pill').forEach(pill => {
-    pill.classList.toggle('active', parseInt(pill.dataset.mode) === mode);
-  });
-  const info = MODE_TITLES[mode] || MODE_TITLES[1];
-  document.getElementById('statPass').textContent = info.pass;
-  document.getElementById('statFilter').textContent = info.filter;
-  document.getElementById('statVar').textContent = info.var;
-}
+    function updateModeUI(mode) {
+      currentMode = mode;
+      document.querySelectorAll('.mode-pill').forEach(pill => {
+        pill.classList.toggle('active', parseInt(pill.dataset.mode) === mode);
+      });
+      const info = MODE_TITLES[mode] || MODE_TITLES[1];
+      document.getElementById('statPass').textContent = info.pass;
+      document.getElementById('statFilter').textContent = info.filter;
+      document.getElementById('statVar').textContent = info.var;
+    }
 
-updateModeUI(currentMode);
+    updateModeUI(currentMode);
 
-document.querySelectorAll('.mode-pill').forEach(pill => {
-  pill.addEventListener('click', () => updateModeUI(parseInt(pill.dataset.mode)));
-});
+    document.querySelectorAll('.mode-pill').forEach(pill => {
+      pill.addEventListener('click', () => updateModeUI(parseInt(pill.dataset.mode)));
+    });
 
-window.addEventListener('keydown', (e) => {
-  const m = parseInt(e.key);
-  if (m >= 1 && m <= 5) updateModeUI(m);
-});
+    window.addEventListener('keydown', (e) => {
+      const m = parseInt(e.key);
+      if (m >= 1 && m <= 5) updateModeUI(m);
+    });
 
-// Fullscreen Quad Shaders
-const vsQuad = `#version 300 es
+    // Fullscreen Quad Shaders
+    const vsQuad = `#version 300 es
 in vec2 position;
 out vec2 vUV;
 void main() {
@@ -226,8 +244,8 @@ void main() {
   gl_Position = vec4(position, 0.0, 1.0);
 }`;
 
-// Single-Pass Master SVGF Shader
-const fsMaster = `#version 300 es
+    // Single-Pass Master SVGF Shader
+    const fsMaster = `#version 300 es
 precision highp float;
 precision highp int;
 
@@ -554,65 +572,65 @@ void main() {
 }
 `;
 
-function createShader(gl, type, source) {
-  const s = gl.createShader(type);
-  gl.shaderSource(s, source);
-  gl.compileShader(s);
-  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
-    console.error('Shader compile error:', gl.getShaderInfoLog(s));
-    gl.deleteShader(s);
-    return null;
-  }
-  return s;
-}
+    function createShader(gl, type, source) {
+      const s = gl.createShader(type);
+      gl.shaderSource(s, source);
+      gl.compileShader(s);
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+        console.error('Shader compile error:', gl.getShaderInfoLog(s));
+        gl.deleteShader(s);
+        return null;
+      }
+      return s;
+    }
 
-const vs = createShader(gl, gl.VERTEX_SHADER, vsQuad);
-const fs = createShader(gl, gl.FRAGMENT_SHADER, fsMaster);
-const program = gl.createProgram();
-gl.attachShader(program, vs);
-gl.attachShader(program, fs);
-gl.linkProgram(program);
+    const vs = createShader(gl, gl.VERTEX_SHADER, vsQuad);
+    const fs = createShader(gl, gl.FRAGMENT_SHADER, fsMaster);
+    const program = gl.createProgram();
+    gl.attachShader(program, vs);
+    gl.attachShader(program, fs);
+    gl.linkProgram(program);
 
-if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-  console.error('Program link error:', gl.getProgramInfoLog(program));
-}
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      console.error('Program link error:', gl.getProgramInfoLog(program));
+    }
 
-gl.useProgram(program);
+    gl.useProgram(program);
 
-// Quad Geometry
-const posBuffer = gl.createBuffer();
-gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
-gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
-  -1, -1,
-   1, -1,
-  -1,  1,
-  -1,  1,
-   1, -1,
-   1,  1
-]), gl.STATIC_DRAW);
+    // Quad Geometry
+    const posBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+      -1, -1,
+      1, -1,
+      -1, 1,
+      -1, 1,
+      1, -1,
+      1, 1
+    ]), gl.STATIC_DRAW);
 
-const posLoc = gl.getAttribLocation(program, 'position');
-gl.enableVertexAttribArray(posLoc);
-gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+    const posLoc = gl.getAttribLocation(program, 'position');
+    gl.enableVertexAttribArray(posLoc);
+    gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
 
-const locResolution = gl.getUniformLocation(program, 'uResolution');
-const locTime = gl.getUniformLocation(program, 'uTime');
-const locMode = gl.getUniformLocation(program, 'uMode');
+    const locResolution = gl.getUniformLocation(program, 'uResolution');
+    const locTime = gl.getUniformLocation(program, 'uTime');
+    const locMode = gl.getUniformLocation(program, 'uMode');
 
-gl.uniform2f(locResolution, 1920, 1080);
+    gl.uniform2f(locResolution, 1920, 1080);
 
-let startTime = performance.now();
+    let startTime = performance.now();
 
-function render(now) {
-  const elapsed = (now - startTime) * 0.001 + timeOffset;
-  gl.uniform1f(locTime, elapsed);
-  gl.uniform1i(locMode, currentMode);
-  gl.drawArrays(gl.TRIANGLES, 0, 6);
-  requestAnimationFrame(render);
-}
+    function render(now) {
+      const elapsed = (now - startTime) * 0.001 + timeOffset;
+      gl.uniform1f(locTime, elapsed);
+      gl.uniform1i(locMode, currentMode);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+      requestAnimationFrame(render);
+    }
 
-requestAnimationFrame(render);
-</script>
+    requestAnimationFrame(render);
+  </script>
 </body>
-</html>
 
+</html>

@@ -1,220 +1,238 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-<!--
+  <!--
   Author: @GraphicsRender (https://github.com/totostudio/GraphicsRender)
-  Series: Real-Time 3D Graphics Pipeline Studio
+  Series: Real-Time 3D Graphics Pipeline Studio 
   YouTube: https://www.youtube.com/@GraphicsRender
 -->
-<meta charset="UTF-8">
-<meta name="viewport" content="width=1920, height=1080">
-<title>SSGI Real-Time Viewport — Screen-Space Global Illumination &amp; Diffuse Color Bleeding</title>
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    width: 1920px;
-    height: 1080px;
-    background: #020408;
-    color: #F8FAFC;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
-    overflow: hidden;
-    position: relative;
-    user-select: none;
-  }
-  canvas#glCanvas {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    display: block;
-    z-index: 1;
-  }
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=1920, height=1080">
+  <title>SSGI Real-Time Viewport — Screen-Space Global Illumination &amp; Diffuse Color Bleeding</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
 
-  /* Minimal Engine Viewport Top Bar (Industrial Viewport HUD) */
-  .viewport-top-bar {
-    position: absolute;
-    top: 28px;
-    left: 40px;
-    right: 40px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    z-index: 10;
-    pointer-events: none;
-    font-family: "JetBrains Mono", Consolas, monospace;
-  }
-  .viewport-identity {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    font-size: 13px;
-    color: #94A3B8;
-  }
-  .viewport-tag {
-    background: rgba(0, 242, 254, 0.15);
-    border: 1px solid rgba(0, 242, 254, 0.4);
-    color: #00F2FE;
-    padding: 3px 10px;
-    border-radius: 4px;
-    font-weight: 700;
-    letter-spacing: 1px;
-    font-size: 11px;
-  }
-  .viewport-title {
-    color: #FFFFFF;
-    font-weight: 600;
-    font-size: 14px;
-    letter-spacing: 0.5px;
-  }
-  .mode-selector {
-    display: flex;
-    gap: 8px;
-    pointer-events: auto;
-  }
-  .mode-pill {
-    font-size: 12px;
-    font-weight: 600;
-    background: rgba(15, 23, 42, 0.85);
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    padding: 5px 12px;
-    border-radius: 4px;
-    color: #94A3B8;
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-  .mode-pill:hover {
-    border-color: #00F2FE;
-    color: #FFFFFF;
-  }
-  .mode-pill.active {
-    background: rgba(0, 242, 254, 0.25);
-    border-color: #00F2FE;
-    color: #FFFFFF;
-  }
+    body {
+      width: 1920px;
+      height: 1080px;
+      background: #020408;
+      color: #F8FAFC;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+      overflow: hidden;
+      position: relative;
+      user-select: none;
+    }
 
-  /* Bottom Telemetry HUD — YouTube Safe-Zone Compliant (Left side only) */
-  .hud-bottom-stats {
-    position: absolute;
-    bottom: 28px;
-    left: 40px;
-    display: flex;
-    gap: 16px;
-    z-index: 10;
-    font-family: "JetBrains Mono", Consolas, monospace;
-    font-size: 12px;
-    pointer-events: none;
-  }
-  .stat-card {
-    background: rgba(10, 14, 26, 0.88);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    backdrop-filter: blur(8px);
-    padding: 8px 14px;
-    border-radius: 6px;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-  .stat-label {
-    color: #64748B;
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-  }
-  .stat-val {
-    color: #00F2FE;
-    font-weight: 700;
-  }
-</style>
+    canvas#glCanvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      z-index: 1;
+    }
+
+    /* Minimal Engine Viewport Top Bar (Industrial Viewport HUD) */
+    .viewport-top-bar {
+      position: absolute;
+      top: 28px;
+      left: 40px;
+      right: 40px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 10;
+      pointer-events: none;
+      font-family: "JetBrains Mono", Consolas, monospace;
+    }
+
+    .viewport-identity {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 13px;
+      color: #94A3B8;
+    }
+
+    .viewport-tag {
+      background: rgba(0, 242, 254, 0.15);
+      border: 1px solid rgba(0, 242, 254, 0.4);
+      color: #00F2FE;
+      padding: 3px 10px;
+      border-radius: 4px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      font-size: 11px;
+    }
+
+    .viewport-title {
+      color: #FFFFFF;
+      font-weight: 600;
+      font-size: 14px;
+      letter-spacing: 0.5px;
+    }
+
+    .mode-selector {
+      display: flex;
+      gap: 8px;
+      pointer-events: auto;
+    }
+
+    .mode-pill {
+      font-size: 12px;
+      font-weight: 600;
+      background: rgba(15, 23, 42, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      padding: 5px 12px;
+      border-radius: 4px;
+      color: #94A3B8;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .mode-pill:hover {
+      border-color: #00F2FE;
+      color: #FFFFFF;
+    }
+
+    .mode-pill.active {
+      background: rgba(0, 242, 254, 0.25);
+      border-color: #00F2FE;
+      color: #FFFFFF;
+    }
+
+    /* Bottom Telemetry HUD — YouTube Safe-Zone Compliant (Left side only) */
+    .hud-bottom-stats {
+      position: absolute;
+      bottom: 28px;
+      left: 40px;
+      display: flex;
+      gap: 16px;
+      z-index: 10;
+      font-family: "JetBrains Mono", Consolas, monospace;
+      font-size: 12px;
+      pointer-events: none;
+    }
+
+    .stat-card {
+      background: rgba(10, 14, 26, 0.88);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(8px);
+      padding: 8px 14px;
+      border-radius: 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .stat-label {
+      color: #64748B;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .stat-val {
+      color: #00F2FE;
+      font-weight: 700;
+    }
+  </style>
 </head>
+
 <body>
 
-<canvas id="glCanvas"></canvas>
+  <canvas id="glCanvas"></canvas>
 
-<!-- Top Engineering Viewport Bar -->
-<div class="viewport-top-bar">
-  <div class="viewport-identity">
-    <span class="viewport-tag">GLSL 3.0 ES</span>
-    <span class="viewport-title">SCREEN-SPACE GLOBAL ILLUMINATION // DIFFUSE COLOR BLEEDING</span>
+  <!-- Top Engineering Viewport Bar -->
+  <div class="viewport-top-bar">
+    <div class="viewport-identity">
+      <span class="viewport-tag">GLSL 3.0 ES</span>
+      <span class="viewport-title">SCREEN-SPACE GLOBAL ILLUMINATION // DIFFUSE COLOR BLEEDING</span>
+    </div>
+    <div class="mode-selector">
+      <div class="mode-pill active" data-mode="1" id="btnMode1">[1] Composite Beauty + SSGI</div>
+      <div class="mode-pill" data-mode="2" id="btnMode2">[2] Isolated Indirect Radiance</div>
+      <div class="mode-pill" data-mode="3" id="btnMode3">[3] Color Bleeding Heatmap</div>
+      <div class="mode-pill" data-mode="4" id="btnMode4">[4] Direct Light Only (No GI)</div>
+      <div class="mode-pill" data-mode="5" id="btnMode5">[5] G-Buffer Normals &amp; Depth</div>
+    </div>
   </div>
-  <div class="mode-selector">
-    <div class="mode-pill active" data-mode="1" id="btnMode1">[1] Composite Beauty + SSGI</div>
-    <div class="mode-pill" data-mode="2" id="btnMode2">[2] Isolated Indirect Radiance</div>
-    <div class="mode-pill" data-mode="3" id="btnMode3">[3] Color Bleeding Heatmap</div>
-    <div class="mode-pill" data-mode="4" id="btnMode4">[4] Direct Light Only (No GI)</div>
-    <div class="mode-pill" data-mode="5" id="btnMode5">[5] G-Buffer Normals &amp; Depth</div>
+
+  <!-- Bottom Telemetry HUD (Left Side Safe Zone) -->
+  <div class="hud-bottom-stats">
+    <div class="stat-card">
+      <span class="stat-label">RENDER PASS</span>
+      <span class="stat-val" id="statPass">Composite PBR + SSGI</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-label">HEMISPHERE RAYS</span>
+      <span class="stat-val">1 spp Cosine-Weighted</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-label">DENOISING</span>
+      <span class="stat-val">Spatio-Temporal Bilateral</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-label">COLOR BLEEDING</span>
+      <span class="stat-val" style="color: #FF1E56;">Carmine &times; Cyan</span>
+    </div>
   </div>
-</div>
 
-<!-- Bottom Telemetry HUD (Left Side Safe Zone) -->
-<div class="hud-bottom-stats">
-  <div class="stat-card">
-    <span class="stat-label">RENDER PASS</span>
-    <span class="stat-val" id="statPass">Composite PBR + SSGI</span>
-  </div>
-  <div class="stat-card">
-    <span class="stat-label">HEMISPHERE RAYS</span>
-    <span class="stat-val">1 spp Cosine-Weighted</span>
-  </div>
-  <div class="stat-card">
-    <span class="stat-label">DENOISING</span>
-    <span class="stat-val">Spatio-Temporal Bilateral</span>
-  </div>
-  <div class="stat-card">
-    <span class="stat-label">COLOR BLEEDING</span>
-    <span class="stat-val" style="color: #FF1E56;">Carmine &times; Cyan</span>
-  </div>
-</div>
+  <script>
+    const canvas = document.getElementById('glCanvas');
+    const gl = canvas.getContext('webgl2');
+    if (!gl) {
+      document.body.innerHTML = '<h2 style="color:white;padding:40px;">WebGL 2.0 required for this demo</h2>';
+    }
 
-<script>
-const canvas = document.getElementById('glCanvas');
-const gl = canvas.getContext('webgl2');
-if (!gl) {
-  document.body.innerHTML = '<h2 style="color:white;padding:40px;">WebGL 2.0 required for this demo</h2>';
-}
+    function resize() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      gl.viewport(0, 0, canvas.width, canvas.height);
+    }
+    window.addEventListener('resize', resize);
+    resize();
 
-function resize() {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
-  gl.viewport(0, 0, canvas.width, canvas.height);
-}
-window.addEventListener('resize', resize);
-resize();
+    // Interactive Mode Control
+    const urlParams = new URLSearchParams(window.location.search);
+    let currentMode = parseInt(urlParams.get('mode') || '1');
+    let timeOffset = parseFloat(urlParams.get('time') || '0.0');
 
-// Interactive Mode Control
-const urlParams = new URLSearchParams(window.location.search);
-let currentMode = parseInt(urlParams.get('mode') || '1');
-let timeOffset = parseFloat(urlParams.get('time') || '0.0');
+    const passNames = [
+      'Composite PBR + SSGI (Resolved)',
+      'Isolated Indirect Radiance',
+      'Color Bleeding Delta Heatmap',
+      'Direct Light Only (No GI - Pitch Black Crevices)',
+      'G-Buffer Normals & Depth'
+    ];
 
-const passNames = [
-  'Composite PBR + SSGI (Resolved)',
-  'Isolated Indirect Radiance',
-  'Color Bleeding Delta Heatmap',
-  'Direct Light Only (No GI - Pitch Black Crevices)',
-  'G-Buffer Normals & Depth'
-];
+    function updateModeUI(mode) {
+      currentMode = mode;
+      for (let i = 1; i <= 5; i++) {
+        const btn = document.getElementById('btnMode' + i);
+        if (btn) btn.classList.toggle('active', i === mode);
+      }
+      const stat = document.getElementById('statPass');
+      if (stat) stat.innerText = passNames[mode - 1] || 'Composite PBR + SSGI';
+    }
+    updateModeUI(currentMode);
 
-function updateModeUI(mode) {
-  currentMode = mode;
-  for (let i = 1; i <= 5; i++) {
-    const btn = document.getElementById('btnMode' + i);
-    if (btn) btn.classList.toggle('active', i === mode);
-  }
-  const stat = document.getElementById('statPass');
-  if (stat) stat.innerText = passNames[mode - 1] || 'Composite PBR + SSGI';
-}
-updateModeUI(currentMode);
+    document.querySelectorAll('.mode-pill').forEach(pill => {
+      pill.addEventListener('click', () => updateModeUI(parseInt(pill.dataset.mode)));
+    });
 
-document.querySelectorAll('.mode-pill').forEach(pill => {
-  pill.addEventListener('click', () => updateModeUI(parseInt(pill.dataset.mode)));
-});
+    window.addEventListener('keydown', (e) => {
+      const m = parseInt(e.key);
+      if (m >= 1 && m <= 5) updateModeUI(m);
+    });
 
-window.addEventListener('keydown', (e) => {
-  const m = parseInt(e.key);
-  if (m >= 1 && m <= 5) updateModeUI(m);
-});
-
-// Fullscreen Quad Shaders
-const vsQuad = `#version 300 es
+    // Fullscreen Quad Shaders
+    const vsQuad = `#version 300 es
 in vec2 position;
 out vec2 vUV;
 void main() {
@@ -222,8 +240,8 @@ void main() {
   gl_Position = vec4(position, 0.0, 1.0);
 }`;
 
-// Single-Pass Master Shader with In-Shader SSGI Raymarching & Color Bleeding
-const fsMaster = `#version 300 es
+    // Single-Pass Master Shader with In-Shader SSGI Raymarching & Color Bleeding
+    const fsMaster = `#version 300 es
 precision highp float;
 precision highp int;
 
@@ -588,69 +606,70 @@ void main() {
 }
 `;
 
-// Helper: Compile Shader Program
-function createShader(gl, type, source) {
-  const s = gl.createShader(type);
-  gl.shaderSource(s, source);
-  gl.compileShader(s);
-  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
-    console.error('Shader compile error:', gl.getShaderInfoLog(s));
-    gl.deleteShader(s);
-    return null;
-  }
-  return s;
-}
+    // Helper: Compile Shader Program
+    function createShader(gl, type, source) {
+      const s = gl.createShader(type);
+      gl.shaderSource(s, source);
+      gl.compileShader(s);
+      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+        console.error('Shader compile error:', gl.getShaderInfoLog(s));
+        gl.deleteShader(s);
+        return null;
+      }
+      return s;
+    }
 
-const vs = createShader(gl, gl.VERTEX_SHADER, vsQuad);
-const fs = createShader(gl, gl.FRAGMENT_SHADER, fsMaster);
-const program = gl.createProgram();
-gl.attachShader(program, vs);
-gl.attachShader(program, fs);
-gl.linkProgram(program);
-if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-  console.error('Program link error:', gl.getProgramInfoLog(program));
-}
+    const vs = createShader(gl, gl.VERTEX_SHADER, vsQuad);
+    const fs = createShader(gl, gl.FRAGMENT_SHADER, fsMaster);
+    const program = gl.createProgram();
+    gl.attachShader(program, vs);
+    gl.attachShader(program, fs);
+    gl.linkProgram(program);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      console.error('Program link error:', gl.getProgramInfoLog(program));
+    }
 
-// Fullscreen Quad Buffer
-const quadBuffer = gl.createBuffer();
-gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
-gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
-  -1, -1,
-   1, -1,
-  -1,  1,
-   1,  1
-]), gl.STATIC_DRAW);
+    // Fullscreen Quad Buffer
+    const quadBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+      -1, -1,
+      1, -1,
+      -1, 1,
+      1, 1
+    ]), gl.STATIC_DRAW);
 
-// Uniform Locations
-const posLoc = gl.getAttribLocation(program, 'position');
-const uResLoc = gl.getUniformLocation(program, 'uResolution');
-const uTimeLoc = gl.getUniformLocation(program, 'uTime');
-const uModeLoc = gl.getUniformLocation(program, 'uMode');
+    // Uniform Locations
+    const posLoc = gl.getAttribLocation(program, 'position');
+    const uResLoc = gl.getUniformLocation(program, 'uResolution');
+    const uTimeLoc = gl.getUniformLocation(program, 'uTime');
+    const uModeLoc = gl.getUniformLocation(program, 'uMode');
 
-// Headless Time Setter for Seamless Multi-Beat Recording
-window.setTimeOffset = function(t) {
-  timeOffset = t;
-};
+    // Headless Time Setter for Seamless Multi-Beat Recording
+    window.setTimeOffset = function (t) {
+      timeOffset = t;
+    };
 
-// Render Loop
-let startTime = performance.now();
-function render(now) {
-  gl.viewport(0, 0, canvas.width, canvas.height);
-  gl.useProgram(program);
+    // Render Loop
+    let startTime = performance.now();
+    function render(now) {
+      gl.viewport(0, 0, canvas.width, canvas.height);
+      gl.useProgram(program);
 
-  gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
-  gl.enableVertexAttribArray(posLoc);
-  gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
+      gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+      gl.enableVertexAttribArray(posLoc);
+      gl.vertexAttribPointer(posLoc, 2, gl.FLOAT, false, 0, 0);
 
-  const elapsed = (now - startTime) * 0.001 + timeOffset;
-  gl.uniform2f(uResLoc, canvas.width, canvas.height);
-  gl.uniform1f(uTimeLoc, elapsed);
-  gl.uniform1i(uModeLoc, currentMode);
+      const elapsed = (now - startTime) * 0.001 + timeOffset;
+      gl.uniform2f(uResLoc, canvas.width, canvas.height);
+      gl.uniform1f(uTimeLoc, elapsed);
+      gl.uniform1i(uModeLoc, currentMode);
 
-  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-  requestAnimationFrame(render);
-}
-requestAnimationFrame(render);
-</script>
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      requestAnimationFrame(render);
+    }
+    requestAnimationFrame(render);
+  </script>
 </body>
+
 </html>
