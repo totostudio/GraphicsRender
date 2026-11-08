@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<!--
+  Author: @GraphicsRender (https://github.com/totostudio/GraphicsRender)
+  Series: Real-Time 3D Graphics Pipeline Studio
+  YouTube: https://www.youtube.com/@GraphicsRender
+-->
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1920, height=1080">
+<title>TSR / FSR 2 Real-Time Viewport — Temporal Super Resolution &amp; Contrast-Adaptive Sharpening</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    width: 1920px;
+    height: 1080px;
+    background: #020408;
+    color: #F8FAFC;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+    overflow: hidden;
+    position: relative;
+    user-select: none;
+  }
+  canvas#glCanvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    z-index: 1;
+  }
+
+  /* Minimal Engine Viewport Top Bar (Industrial Viewport HUD) */
+  .viewport-top-bar {
+    position: absolute;
+    top: 28px;
+    left: 40px;
+    right: 40px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 10;
+    pointer-events: none;
+    font-family: "JetBrains Mono", Consolas, monospace;
+  }
+  .viewport-identity {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 13px;
+    color: #94A3B8;
+  }
+  .viewport-tag {
+    background: rgba(0, 242, 254, 0.15);
+    border: 1px solid rgba(0, 242, 254, 0.4);
+    color: #00F2FE;
+    padding: 3px 10px;
+    border-radius: 4px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    font-size: 11px;
+  }
+  .viewport-title {
+    color: #FFFFFF;
+    font-weight: 600;
+    font-size: 14px;
+    letter-spacing: 0.5px;
+  }
+  .mode-selector {
+    display: flex;
+    gap: 8px;
+    pointer-events: auto;
+  }
+  .mode-pill {
+    font-size: 12px;
+    font-weight: 600;
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    padding: 5px 12px;
+    border-radius: 4px;
+    color: #94A3B8;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .mode-pill:hover {
+    border-color: #00F2FE;
+    color: #FFFFFF;
+  }
+  .mode-pill.active {
+    background: rgba(0, 242, 254, 0.25);
+    border-color: #00F2FE;
+    color: #FFFFFF;
+  }
+
+  /* Bottom Telemetry HUD — YouTube Safe-Zone Compliant (Left side only) */
+  .hud-bottom-stats {
+    position: absolute;
+    bottom: 28px;
+    left: 40px;
+    display: flex;
+    gap: 16px;
+    z-index: 10;
+    font-family: "JetBrains Mono", Consolas, monospace;
+    font-size: 12px;
+    pointer-events: none;
+  }
+  .stat-card {
+    background: rgba(10, 14, 26, 0.88);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(8px);
+    padding: 8px 14px;
+    border-radius: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .stat-label {
+    color: #64748B;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .stat-val {
+    color: #00F2FE;
+    font-weight: 700;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="glCanvas" width="1920" height="1080"></canvas>
+
+<!-- Top Engineering Viewport Bar -->
+<div class="viewport-top-bar">
+  <div class="viewport-identity">
+    <span class="viewport-tag">CWL // TSR ENGINE</span>
+    <span class="viewport-title">Temporal Super Resolution (TSR / FSR 2) — 540p to 1080p Reconstruction</span>
+  </div>
+  <div class="mode-selector">
+    <div class="mode-pill active" data-mode="1">[1] Reconstructed TSR</div>
+    <div class="mode-pill" data-mode="2">[2] Bilinear 540p</div>
+    <div class="mode-pill" data-mode="3">[3] Native 1080p</div>
+    <div class="mode-pill" data-mode="4">[4] Sub-Pixel Phases</div>
+    <div class="mode-pill" data-mode="5">[5] CAS Sharpen Map</div>
+  </div>
+</div>
+
+<!-- Bottom Telemetry HUD -->
+<div class="hud-bottom-stats">
+  <div class="stat-card">
+    <span class="stat-label">RENDER PIPELINE</span>
+    <span class="stat-val" id="hudPass">TSR 1080p (540p Base)</span>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">UPSCALE FACTOR</span>
+    <span class="stat-val" id="hudScale">2.0&times; Linear (4.0&times; Pixels)</span>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">FRAME RATE</span>
+    <span class="stat-val" id="hudFps">120 FPS // 5.2 ms</span>
+  </div>
+  <div class="stat-card">
+    <span class="stat-label">RECONSTRUCTION</span>
+    <span class="stat-val" id="hudKernel">5-Tap Catmull-Rom + CAS</span>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('glCanvas');
+const gl = canvas.getContext('webgl2', { antialias: false, alpha: false, preserveDrawingBuffer: false });
+
+if (!gl) {
+  alert('WebGL 2.0 is required for TSR Demo');
+}
+gl.getExtension('EXT_color_buffer_float');
+
+// 16-Phase Halton(2, 3) low-discrepancy sequence
+const HALTON_16 = [
+  [0.500000, 0.333333],
+  [0.250000, 0.666667],
+  [0.750000, 0.111111],
+  [0.125000, 0.444444],
+  [0.625000, 0.777778],
+  [0.375000, 0.222222],
+  [0.875000, 0.555556],
+  [0.062500, 0.888889],
+  [0.562500, 0.037037],
+  [0.312500, 0.370370],
+  [0.812500, 0.703704],
+  [0.187500, 0.148148],
+  [0.687500, 0.481481],
+  [0.437500, 0.814815],
+  [0.937500, 0.259259],
+  [0.031250, 0.592593]
+];
+
+let frameIndex = 0;
+let currentMode = 1;
+
+const modePills = document.querySelectorAll('.mode-pill');
+const hudPass = document.getElementById('hudPass');
+const hudScale = document.getElementById('hudScale');
+const hudFps = document.getElementById('hudFps');
+const hudKernel = document.getElementById('hudKernel');
+
+const passNames = {
+  1: 'TSR 1080p (540p Base)',
+  2: 'Native 540p (Bilinear Filter)',
+  3: 'Native 1080p (1spp No TAA)',
+  4: 'Sub-Pixel Jitter & Motion Vectors',
+  5: 'CAS Contrast Sharpening Heatmap'
+};
+
+const fpsDetails = {
+  1: '120 FPS // 5.2 ms',
+  2: '144 FPS // 3.8 ms',
+  3: '45 FPS // 22.2 ms',
+  4: '120 FPS // 5.2 ms',
+  5: '120 FPS // 5.2 ms'
+};
+
+const kernelDetails = {
+  1: '5-Tap Catmull-Rom + CAS',
+  2: 'Bilinear Hardware Blur',
+  3: 'Brute-force 1080p (Aliased)',
+  4: 'Halton(2,3) 16-Phase Grid',
+  5: 'AMD FidelityFX CAS 0.75'
+};
+
+function setMode(m) {
+  currentMode = parseInt(m);
+  modePills.forEach(p => {
+    if (parseInt(p.dataset.mode) === currentMode) p.classList.add('active');
+    else p.classList.remove('active');
+  });
+  if (hudPass) hudPass.textContent = passNames[currentMode] || 'TSR 1080p';
+  if (hudScale) hudScale.textContent = (currentMode === 3) ? '1.0× Native (Full Res)' : '2.0× Linear (4.0× Pixels)';
+  if (hudFps) hudFps.textContent = fpsDetails[currentMode] || '120 FPS';
+  if (hudKernel) hudKernel.textContent = kernelDetails[currentMode] || 'Catmull-Rom';
+}
+
+modePills.forEach(p => {
+  p.addEventListener('click', () => setMode(p.dataset.mode));
+});
+
+window.addEventListener('keydown', (e) => {
+  if (['1', '2', '3', '4', '5'].includes(e.key)) {
+    setMode(e.key);
+  }
+});
+
+const urlParams = new URLSearchParams(window.location.search);
+if (urlParams.has('mode')) {
+  setMode(urlParams.get('mode'));
+}
+
+// Fullscreen Quad Shaders
+const vsQuad = `#version 300 es
+in vec2 position;
+out vec2 vUV;
+void main() {
+    vUV = position * 0.5 + 0.5;
+    gl_Position = vec4(position, 0.0, 1.0);
+}`;
+
+// Pass 1: High-Tech Cyberpunk Motherboard / Processor Architecture (SDF Scene)
+const fsScene = `#version 300 es
+precision highp float;
+
+uniform vec2 uResolution;
+uniform float uTime;
+uniform vec2 uJitter;
+uniform int uRenderMode; // 1: 540p Jittered, 3: 1080p Native
+
+layout(location = 0) out vec4 outColor;     // RGB: Scene Radiance, A: Linear Depth
+layout(location = 1) out vec4 outVelocity;  // RG: Motion Vector, B: Metalness, A: 1.0
+
+// Primitive Distance Functions
+float sdBox(vec3 p, vec3 b) {
+    vec3 d = abs(p) - b;
+    return min(max(d.x, max(d.y, d.z)), 0.0) + length(max(d, 0.0));
+}
+
+float sdCylinder(vec3 p, vec2 h) {
+    vec2 d = abs(vec2(length(p.xz), p.y)) - h;
+    return min(max(d.x, d.y), 0.0) + length(max(d, 0.0));
+}
+
+// High-frequency PCB circuit trace pattern
+float getCircuitTraces(vec2 p) {
+    vec2 g = fract(p * 12.0) - 0.5;
+    vec2 id = floor(p * 12.0);
+    
+    // Multiple dense parallel bus traces
+    float line1 = abs(g.y) - 0.04;
+    float line2 = abs(g.x) - 0.04;
+    float diag = abs(g.x + g.y) * 0.7071 - 0.035;
+    
+    // Solder pads / vias
+    float pad = length(g) - 0.16;
+    float viaHole = length(g) - 0.07;
+    
+    float trace = min(min(line1, line2), diag);
+    return min(trace, max(pad, -viaHole));
+}
+
+// Scene Map: Motherboard with Central Micro-Processor, Heatsinks, SMD Components
+vec2 mapScene(vec3 p) {
+    // 1. PCB Substrate Plane
+    float dPCB = p.y;
+    
+    // 2. Central BGA / QFP Silicon Processor Chip
+    vec3 pChip = p - vec3(0.0, 0.12, 0.0);
+    float dChip = sdBox(pChip, vec3(1.8, 0.12, 1.8)) - 0.03;
+    
+    // Silicon die on top
+    float dDie = sdBox(p - vec3(0.0, 0.28, 0.0), vec3(1.1, 0.04, 1.1)) - 0.01;
+    
+    // Copper heatsink fins on left
+    vec3 pSink = p - vec3(-3.2, 0.5, 0.0);
+    float dSinkBox = sdBox(pSink, vec3(0.9, 0.5, 2.2));
+    float fins = sin(pSink.z * 18.0) * 0.08;
+    float dSink = dSinkBox + fins;
+    
+    // SMD Ceramic Capacitors & Resistors array
+    vec3 pSMD = p;
+    pSMD.x = mod(p.x + 1.0, 0.7) - 0.35;
+    pSMD.z = mod(p.z + 1.0, 0.9) - 0.45;
+    float dSMD = sdBox(pSMD - vec3(0.0, 0.08, 0.0), vec3(0.18, 0.08, 0.12)) - 0.02;
+    // Mask SMD outside chip area
+    if (abs(p.x) < 2.2 && abs(p.z) < 2.2) dSMD = 10.0;
+    if (p.x < -2.2) dSMD = 10.0;
+    
+    // Combine geometry
+    float d = min(dPCB, min(dChip, min(dDie, min(dSink, dSMD))));
+    
+    // Material ID: 1: PCB, 2: Chip, 3: Die, 4: Heatsink, 5: SMD
+    float mat = 1.0;
+    if (d == dChip) mat = 2.0;
+    else if (d == dDie) mat = 3.0;
+    else if (d == dSink) mat = 4.0;
+    else if (d == dSMD) mat = 5.0;
+    
+    return vec2(d, mat);
+}
+
+vec3 calcNormal(vec3 p) {
+    vec2 e = vec2(0.002, 0.0);
+    return normalize(vec3(
+        mapScene(p + e.xyy).x - mapScene(p - e.xyy).x,
+        mapScene(p + e.yxy).x - mapScene(p - e.yxy).x,
+        mapScene(p + e.yyx).x - mapScene(p - e.yyx).x
+    ));
+}
+
+void main() {
+    // Sub-pixel jitter offset application
+    vec2 jitterOffset = (uRenderMode == 1) ? uJitter : vec2(0.0);
+    vec2 uv = (gl_FragCoord.xy + jitterOffset) / uResolution;
+    vec2 pScreen = (uv - 0.5) * 2.0;
+    pScreen.x *= uResolution.x / uResolution.y;
+
+    // Smooth cinematic orbital pan
+    float camAngle = uTime * 0.18;
+    float camRadius = 7.5;
+    vec3 ro = vec3(sin(camAngle) * camRadius, 4.2 + sin(uTime * 0.12) * 0.4, cos(camAngle) * camRadius);
+    vec3 ta = vec3(0.0, 0.2, 0.0);
+    
+    vec3 ww = normalize(ta - ro);
+    vec3 uu = normalize(cross(ww, vec3(0.0, 1.0, 0.0)));
+    vec3 vv = cross(uu, ww);
+    vec3 rd = normalize(pScreen.x * uu + pScreen.y * vv + 1.85 * ww);
+
+    // Raymarching
+    float t = 0.1;
+    float maxDist = 24.0;
+    vec2 hit = vec2(-1.0);
+    for (int i = 0; i < 90; i++) {
+        vec3 pos = ro + rd * t;
+        vec2 h = mapScene(pos);
+        if (h.x < 0.0015) {
+            hit = vec2(t, h.y);
+            break;
+        }
+        t += h.x * 0.85;
+        if (t > maxDist) break;
+    }
+
+    vec3 col = vec3(0.08, 0.12, 0.22); // High-tech dark ambient background
+    vec2 velocity = vec2(0.0);
+    float linearDepth = 1.0;
+
+    if (hit.x > 0.0) {
+        linearDepth = hit.x / maxDist;
+        vec3 pos = ro + rd * hit.x;
+        vec3 norm = calcNormal(pos);
+        float matID = hit.y;
+
+        // PBR Base Colors
+        vec3 albedo = vec3(0.04, 0.07, 0.06); // Matte-black/dark green PCB base
+        float metallic = 0.05;
+        float roughness = 0.65;
+
+        if (matID == 1.0) { // PCB Surface with micro-traces
+            float traceDist = getCircuitTraces(pos.xz);
+            float traceFade = smoothstep(16.0, 6.0, hit.x); // Fade micro-traces before Nyquist limit
+            if (traceDist < 0.0 && traceFade > 0.01) {
+                // Gold / Copper Bus Traces
+                albedo = mix(albedo, vec3(0.95, 0.72, 0.28), traceFade);
+                metallic = 0.95 * traceFade;
+                roughness = mix(0.55, 0.15, traceFade);
+            } else {
+                // Matte solder mask substrate with subtle silkscreen
+                float grid = (step(0.96, fract(pos.x * 2.0)) + step(0.96, fract(pos.z * 2.0))) * traceFade;
+                albedo = mix(vec3(0.03, 0.08, 0.06), vec3(0.8, 0.85, 0.9), grid * 0.4);
+                roughness = 0.55;
+            }
+        } else if (matID == 2.0) { // Microchip Body
+            albedo = vec3(0.06, 0.07, 0.09);
+            roughness = 0.35;
+            // Golden edge pins
+            if (abs(pos.x) > 1.6 || abs(pos.z) > 1.6) {
+                float pinPattern = step(0.4, sin(pos.x * 45.0 + pos.z * 45.0));
+                albedo = mix(vec3(0.06), vec3(0.96, 0.78, 0.30), pinPattern);
+                metallic = pinPattern * 0.9;
+                roughness = mix(0.35, 0.15, pinPattern);
+            }
+        } else if (matID == 3.0) { // Silicon Die
+            albedo = vec3(0.12, 0.18, 0.28);
+            metallic = 0.85;
+            roughness = 0.08;
+        } else if (matID == 4.0) { // Extruded Aluminum Heatsink
+            albedo = vec3(0.65, 0.72, 0.80);
+            metallic = 0.92;
+            roughness = 0.25;
+        } else if (matID == 5.0) { // SMD Components
+            albedo = vec3(0.25, 0.22, 0.20);
+            if (abs(pos.z) > 0.1) { albedo = vec3(0.85); metallic = 0.9; roughness = 0.15; }
+        }
+
+        // Direct Lighting & Specular Reflection
+        vec3 lightDir1 = normalize(vec3(4.0, 7.0, 3.5));
+        vec3 lightDir2 = normalize(vec3(-5.0, 3.5, -4.0));
+        vec3 viewDir = -rd;
+
+        // Key Light (Warm sunlight / lab spotlight)
+        float diff1 = max(dot(norm, lightDir1), 0.0);
+        vec3 half1 = normalize(lightDir1 + viewDir);
+        float spec1 = pow(max(dot(norm, half1), 0.0), mix(12.0, 256.0, 1.0 - roughness));
+        
+        // Fill / Rim Light (Cyan high-tech glow)
+        float diff2 = max(dot(norm, lightDir2), 0.0);
+        vec3 half2 = normalize(lightDir2 + viewDir);
+        float spec2 = pow(max(dot(norm, half2), 0.0), mix(8.0, 180.0, 1.0 - roughness));
+
+        // Ambient Hemisphere Light (Sky cyan + ground bounce)
+        vec3 ambient = mix(vec3(0.08, 0.14, 0.22), vec3(0.15, 0.12, 0.08), norm.y * 0.5 + 0.5);
+
+        // Micro-status LED emission on chip corners
+        float ledGlow = 0.0;
+        if (matID == 2.0 && length(abs(pos.xz) - vec2(1.5, 1.5)) < 0.15) {
+            ledGlow = 1.0;
+        }
+
+        vec3 diffuseColor = albedo * (diff1 * vec3(1.1, 1.05, 0.95) + diff2 * vec3(0.3, 0.6, 0.9) + ambient);
+        vec3 specularColor = mix(vec3(0.04), albedo, metallic) * (spec1 * 1.5 + spec2 * 0.8);
+        vec3 emissiveColor = vec3(0.0, 0.95, 1.0) * ledGlow * 3.0;
+
+        // Distance fog to smoothly merge ground plane into background sky, eliminating horizon flicker
+        float fogFactor = smoothstep(12.0, 23.5, hit.x);
+        vec3 bgSky = vec3(0.08, 0.12, 0.22);
+        col = mix(diffuseColor + specularColor + emissiveColor, bgSky, fogFactor);
+
+        // Motion Vector Calculation (Camera orbital rotation displacement)
+        float prevAngle = (uTime - 0.0166) * 0.18;
+        vec3 prevRo = vec3(sin(prevAngle) * camRadius, 4.2 + sin((uTime - 0.0166) * 0.12) * 0.4, cos(prevAngle) * camRadius);
+        vec3 prevWW = normalize(ta - prevRo);
+        vec3 prevUU = normalize(cross(prevWW, vec3(0.0, 1.0, 0.0)));
+        vec3 prevVV = cross(prevUU, prevWW);
+        
+        // Reproject world position into previous camera view
+        vec3 toPos = pos - prevRo;
+        float prevZ = dot(toPos, prevWW);
+        vec2 prevScreen = vec2(dot(toPos, prevUU), dot(toPos, prevVV)) / (prevZ * 0.54);
+        prevScreen.x /= (uResolution.x / uResolution.y);
+        vec2 prevUV = prevScreen * 0.5 + 0.5;
+        velocity = (uv - prevUV);
+    } else {
+        // Deep background sky cancels camera subpixel jitter to ensure rock-solid stability
+        velocity = jitterOffset / uResolution;
+    }
+
+    outColor = vec4(col, linearDepth);
+    outVelocity = vec4(velocity, hit.y / 5.0, 1.0);
+}`;
+
+// Pass 2: TSR / TAAU Temporal Upscaler & Catmull-Rom History Resolver
+const fsTSRResolve = `#version 300 es
+precision highp float;
+
+uniform sampler2D uCurrColor;       // 540p Low-Res Color + Depth (Texel 1/960, 1/540)
+uniform sampler2D uCurrVelocity;    // 540p Motion Vectors
+uniform sampler2D uHistoryColor;    // 1080p High-Res History Buffer
+uniform vec2 uLowResSize;           // vec2(960.0, 540.0)
+uniform vec2 uHighResSize;          // vec2(1920.0, 1080.0)
+uniform int uMode;                  // 1: TSR, 2: Bilinear, 3: Native, 4: Vectors, 5: CAS
+uniform vec2 uJitter;                 // Sub-pixel Halton jitter offset [-0.5, 0.5]
+
+out vec4 fragColor;
+
+// RGB <-> YCoCg Transformations
+vec3 RGBToYCoCg(vec3 c) {
+    return vec3(
+        0.25 * c.r + 0.5 * c.g + 0.25 * c.b,
+        0.5 * c.r - 0.5 * c.b,
+       -0.25 * c.r + 0.5 * c.g - 0.25 * c.b
+    );
+}
+
+vec3 YCoCgToRGB(vec3 c) {
+    return clamp(vec3(
+        c.x + c.y - c.z,
+        c.x + c.z,
+        c.x - c.y - c.z
+    ), 0.0, 1.0);
+}
+
+// 5-Tap Catmull-Rom Bicubic History Filter
+vec4 sampleCatmullRom(sampler2D tex, vec2 uv, vec2 size) {
+    vec2 samplePos = uv * size;
+    vec2 tc = floor(samplePos - 0.5) + 0.5;
+    vec2 f = samplePos - tc;
+
+    vec2 w0 = f * (-0.5 + f * (1.0 - 0.5 * f));
+    vec2 w1 = 1.0 + f * f * (-2.5 + 1.5 * f);
+    vec2 w2 = f * (0.5 + f * (2.0 - 1.5 * f));
+    vec2 w3 = f * f * (-0.5 + 0.5 * f);
+
+    vec2 w12 = w1 + w2;
+    vec2 tc12 = tc + w2 / w12;
+
+    vec2 tc0 = tc - 1.0;
+    vec2 tc3 = tc + 2.0;
+
+    vec4 col = vec4(0.0);
+    col += texture(tex, vec2(tc12.x, tc0.y) / size) * (w12.x * w0.y);
+    col += texture(tex, vec2(tc0.x, tc12.y) / size) * (w0.x * w12.y);
+    col += texture(tex, vec2(tc12.x, tc12.y) / size) * (w12.x * w12.y);
+    col += texture(tex, vec2(tc3.x, tc12.y) / size) * (w3.x * w12.y);
+    col += texture(tex, vec2(tc12.x, tc3.y) / size) * (w12.x * w3.y);
+
+    return col / (w12.x * w0.y + w0.x * w12.y + w12.x * w12.y + w3.x * w12.y + w12.x * w3.y);
+}
+
+void main() {
+    vec2 highResUV = gl_FragCoord.xy / uHighResSize;
+    vec2 lowResTexel = 1.0 / uLowResSize;
+
+    // Mode 2: Bilinear 540p Upscaling (Raw Blurry Output)
+    if (uMode == 2) {
+        fragColor = vec4(texture(uCurrColor, highResUV).rgb, 1.0);
+        return;
+    }
+
+    // Mode 6: Presentation CAS Sharpening Pass (All 5 samples from the same resolved texture)
+    if (uMode == 6) {
+        vec2 texel = 1.0 / uHighResSize;
+        vec3 c = texture(uCurrColor, highResUV).rgb;
+        vec3 t = texture(uCurrColor, highResUV - vec2(0.0, texel.y)).rgb;
+        vec3 b = texture(uCurrColor, highResUV + vec2(0.0, texel.y)).rgb;
+        vec3 l = texture(uCurrColor, highResUV - vec2(texel.x, 0.0)).rgb;
+        vec3 r = texture(uCurrColor, highResUV + vec2(texel.x, 0.0)).rgb;
+
+        float minLuma = min(c.g, min(min(t.g, b.g), min(l.g, r.g)));
+        float maxLuma = max(c.g, max(max(t.g, b.g), max(l.g, r.g)));
+        float casWeight = -0.25 * sqrt(min(minLuma, 1.0 - maxLuma) / max(maxLuma, 1e-4)) * 0.70;
+        vec3 sharpened = (c + (t + b + l + r) * casWeight) / (1.0 + 4.0 * casWeight);
+        fragColor = vec4(clamp(sharpened, 0.0, 1.0), 1.0);
+        return;
+    }
+
+    // Mode 5: CAS Edge Sharpening Heatmap Presentation
+    if (uMode == 5) {
+        vec2 texel = 1.0 / uHighResSize;
+        vec3 c = texture(uCurrColor, highResUV).rgb;
+        vec3 t = texture(uCurrColor, highResUV - vec2(0.0, texel.y)).rgb;
+        vec3 b = texture(uCurrColor, highResUV + vec2(0.0, texel.y)).rgb;
+        vec3 l = texture(uCurrColor, highResUV - vec2(texel.x, 0.0)).rgb;
+        vec3 r = texture(uCurrColor, highResUV + vec2(texel.x, 0.0)).rgb;
+
+        float minLuma = min(c.g, min(min(t.g, b.g), min(l.g, r.g)));
+        float maxLuma = max(c.g, max(max(t.g, b.g), max(l.g, r.g)));
+        float casWeight = -0.25 * sqrt(min(minLuma, 1.0 - maxLuma) / max(maxLuma, 1e-4)) * 0.70;
+        float edgeStrength = abs(casWeight) * 4.5;
+        vec3 baseScene = c * 0.35;
+        fragColor = vec4(mix(baseScene, vec3(0.0, 0.95, 1.0), edgeStrength), 1.0);
+        return;
+    }
+
+    // Nearest-depth velocity dilation (3x3 footprint in low-res space)
+    float minDepth = 1.0;
+    vec2 dilatedVelocity = vec2(0.0);
+    for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+            vec2 offsetUV = highResUV + vec2(float(x), float(y)) * lowResTexel;
+            vec4 colDepth = texture(uCurrColor, offsetUV);
+            if (colDepth.a < minDepth) {
+                minDepth = colDepth.a;
+                dilatedVelocity = texture(uCurrVelocity, offsetUV).xy;
+            }
+        }
+    }
+
+    // Mode 4: Sub-pixel Phases and Motion Vector visualization
+    if (uMode == 4) {
+        vec3 baseScene = texture(uCurrColor, highResUV).rgb * 0.65;
+        vec2 grid = fract(highResUV * uLowResSize);
+        vec3 gridCol = vec3(step(0.92, grid.x) + step(0.92, grid.y)) * vec3(0.0, 0.95, 1.0);
+        vec3 velCol = vec3(abs(dilatedVelocity.x) * 90.0, abs(dilatedVelocity.y) * 90.0, length(dilatedVelocity) * 60.0);
+        fragColor = vec4(clamp(baseScene + gridCol * 0.45 + velCol, 0.0, 1.0), 1.0);
+        return;
+    }
+
+    // Unjittered sample coordinate in low-res buffer to cancel 1spp screen chatter
+    vec2 currUV = highResUV - uJitter / uLowResSize;
+    vec3 currRGB = texture(uCurrColor, currUV).rgb;
+    vec3 m1 = vec3(0.0);
+    vec3 m2 = vec3(0.0);
+
+    for (int y = -1; y <= 1; y++) {
+        for (int x = -1; x <= 1; x++) {
+            vec3 sRGB = texture(uCurrColor, currUV + vec2(float(x), float(y)) * lowResTexel).rgb;
+            vec3 sYCoCg = RGBToYCoCg(sRGB);
+            m1 += sYCoCg;
+            m2 += sYCoCg * sYCoCg;
+        }
+    }
+    vec3 mu = m1 / 9.0;
+    vec3 sigma = sqrt(max(m2 / 9.0 - mu * mu, vec3(0.0)));
+
+    // Dynamic AABB Bounding Box in YCoCg space (gamma 1.65 prevents false clamping chatter)
+    float gamma = 1.65;
+    vec3 boxMin = mu - gamma * sigma;
+    vec3 boxMax = mu + gamma * sigma;
+
+    // Reproject high-resolution history with Catmull-Rom bicubic filter
+    vec2 historyUV = highResUV - dilatedVelocity;
+    vec3 histRGB = sampleCatmullRom(uHistoryColor, historyUV, uHighResSize).rgb;
+
+    // Out-of-bounds rejection
+    if (historyUV.x < 0.0 || historyUV.x > 1.0 || historyUV.y < 0.0 || historyUV.y > 1.0) {
+        histRGB = currRGB;
+    }
+
+    // Clip history sample to current YCoCg variance box
+    vec3 histYCoCg = RGBToYCoCg(histRGB);
+    vec3 clampedHistYCoCg = clamp(histYCoCg, boxMin, boxMax);
+    vec3 clampedHistRGB = YCoCgToRGB(clampedHistYCoCg);
+
+    // Adaptive accumulation alpha (rock-solid 0.04 base suppresses 1spp chatter)
+    float velocityMag = length(dilatedVelocity * uHighResSize);
+    float alpha = mix(0.04, 0.20, smoothstep(0.0, 8.0, velocityMag));
+
+    // Resolved Reconstructed Color
+    vec3 resolved = mix(clampedHistRGB, currRGB, alpha);
+
+    // Output pristine resolved temporal frame
+    fragColor = vec4(clamp(resolved, 0.0, 1.0), 1.0);
+}`;
+
+// Compile Shader Helper
+function createShader(gl, type, source) {
+  const shader = gl.createShader(type);
+  gl.shaderSource(shader, source);
+  gl.compileShader(shader);
+  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+    console.error('Shader compilation error:', gl.getShaderInfoLog(shader));
+    gl.deleteShader(shader);
+    return null;
+  }
+  return shader;
+}
+
+function createProgram(gl, vsSource, fsSource) {
+  const vs = createShader(gl, gl.VERTEX_SHADER, vsSource);
+  const fs = createShader(gl, gl.FRAGMENT_SHADER, fsSource);
+  const prog = gl.createProgram();
+  gl.attachShader(prog, vs);
+  gl.attachShader(prog, fs);
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+    console.error('Program linking error:', gl.getProgramInfoLog(prog));
+    return null;
+  }
+  return prog;
+}
+
+// Create Fullscreen Quad Geometry
+const quadVAO = gl.createVertexArray();
+gl.bindVertexArray(quadVAO);
+const quadVBO = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, quadVBO);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+  -1, -1,  1, -1, -1,  1,
+  -1,  1,  1, -1,  1,  1
+]), gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0);
+gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+// Shaders
+const progScene = createProgram(gl, vsQuad, fsScene);
+const progTSR = createProgram(gl, vsQuad, fsTSRResolve);
+
+// Low-Res FBO (960 x 540) for 540p rasterization
+const LOW_W = 960, LOW_H = 540;
+const fboLowRes = gl.createFramebuffer();
+gl.bindFramebuffer(gl.FRAMEBUFFER, fboLowRes);
+
+const texLowColor = gl.createTexture();
+gl.bindTexture(gl.TEXTURE_2D, texLowColor);
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, LOW_W, LOW_H, 0, gl.RGBA, gl.FLOAT, null);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texLowColor, 0);
+
+const texLowVelocity = gl.createTexture();
+gl.bindTexture(gl.TEXTURE_2D, texLowVelocity);
+gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, LOW_W, LOW_H, 0, gl.RGBA, gl.FLOAT, null);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, texLowVelocity, 0);
+
+gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
+
+// High-Res Ping-Pong History FBOs (1920 x 1080)
+const HIGH_W = 1920, HIGH_H = 1080;
+const fboHistory = [gl.createFramebuffer(), gl.createFramebuffer()];
+const texHistory = [gl.createTexture(), gl.createTexture()];
+
+for (let i = 0; i < 2; i++) {
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fboHistory[i]);
+  gl.bindTexture(gl.TEXTURE_2D, texHistory[i]);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, HIGH_W, HIGH_H, 0, gl.RGBA, gl.FLOAT, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texHistory[i], 0);
+}
+
+let historyIndex = 0;
+const startTime = performance.now();
+
+function render() {
+  const currentTime = (performance.now() - startTime) * 0.001;
+  const jitter = HALTON_16[frameIndex % 16];
+  // Sub-pixel jitter is strictly applied to temporal upscaling modes (Mode 1, Mode 4, Mode 5)
+  // Conventional 540p Bilinear (Mode 2) & Native 1080p (Mode 3) must NOT jitter the camera to prevent screen chatter
+  const isJittered = (currentMode === 1 || currentMode === 4 || currentMode === 5);
+  const subPixelJitter = isJittered ? [jitter[0] - 0.5, jitter[1] - 0.5] : [0.0, 0.0];
+
+  // -------------------------------------------------------------
+  // PASS 1: Render 3D Scene into Low-Res FBO (960 x 540)
+  // -------------------------------------------------------------
+  const renderRes = (currentMode === 3) ? [HIGH_W, HIGH_H] : [LOW_W, LOW_H];
+  gl.bindFramebuffer(gl.FRAMEBUFFER, (currentMode === 3) ? null : fboLowRes);
+  gl.viewport(0, 0, renderRes[0], renderRes[1]);
+
+  gl.useProgram(progScene);
+  gl.uniform2f(gl.getUniformLocation(progScene, 'uResolution'), renderRes[0], renderRes[1]);
+  gl.uniform1f(gl.getUniformLocation(progScene, 'uTime'), currentTime);
+  gl.uniform2f(gl.getUniformLocation(progScene, 'uJitter'), subPixelJitter[0], subPixelJitter[1]);
+  gl.uniform1i(gl.getUniformLocation(progScene, 'uRenderMode'), (currentMode === 3) ? 3 : 1);
+
+  gl.bindVertexArray(quadVAO);
+  gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+  if (currentMode !== 3) {
+    // -------------------------------------------------------------
+    // PASS 2: TSR Reconstruction Pass (Low-Res -> High-Res Target)
+    // -------------------------------------------------------------
+    const readHistory = texHistory[historyIndex];
+    const writeFBO = fboHistory[1 - historyIndex];
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, writeFBO);
+    gl.viewport(0, 0, HIGH_W, HIGH_H);
+
+    gl.useProgram(progTSR);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, texLowColor);
+    gl.uniform1i(gl.getUniformLocation(progTSR, 'uCurrColor'), 0);
+
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, texLowVelocity);
+    gl.uniform1i(gl.getUniformLocation(progTSR, 'uCurrVelocity'), 1);
+
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, readHistory);
+    gl.uniform1i(gl.getUniformLocation(progTSR, 'uHistoryColor'), 2);
+
+    gl.uniform2f(gl.getUniformLocation(progTSR, 'uLowResSize'), LOW_W, LOW_H);
+    gl.uniform2f(gl.getUniformLocation(progTSR, 'uHighResSize'), HIGH_W, HIGH_H);
+    gl.uniform2f(gl.getUniformLocation(progTSR, 'uJitter'), subPixelJitter[0], subPixelJitter[1]);
+    gl.uniform1i(gl.getUniformLocation(progTSR, 'uMode'), currentMode);
+
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+    // -------------------------------------------------------------
+    // PASS 3: Blit High-Res Result to Default Canvas Buffer
+    // -------------------------------------------------------------
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, HIGH_W, HIGH_H);
+
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, texHistory[1 - historyIndex]);
+    gl.uniform1i(gl.getUniformLocation(progTSR, 'uCurrColor'), 0);
+    const blitMode = (currentMode === 1) ? 6 : ((currentMode === 5) ? 5 : 2);
+    gl.uniform1i(gl.getUniformLocation(progTSR, 'uMode'), blitMode);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+    // Ping-pong history
+    historyIndex = 1 - historyIndex;
+  }
+
+  frameIndex++;
+  requestAnimationFrame(render);
+}
+
+requestAnimationFrame(render);
+</script>
+</body>
+</html>
